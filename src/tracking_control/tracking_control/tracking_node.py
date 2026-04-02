@@ -84,6 +84,11 @@ class TrackingNode(Node):
 
         # Create timer, running at 100Hz
         self.timer = self.create_timer(0.01, self.timer_update)
+
+        self.x = 0
+        self.y = 0
+        self.z = 0
+        self.dt = 0.01
     
     def detected_obs_pose_callback(self, msg):
         #self.get_logger().info('Received Detected Object Pose')
@@ -122,6 +127,9 @@ class TrackingNode(Node):
         # or the height of the object
         # if np.linalg.norm(center_points) > 3 or center_points[2] > 0.7:
         #     return
+
+        if np.linalg.norm(center_points) < 0.3:
+            return
         
         try:
             # Transform the center point from the camera frame to the world frame
@@ -179,7 +187,7 @@ class TrackingNode(Node):
         self.pub_control_cmd.publish(cmd_vel)
         #################################################
     
-    def controller(self):
+    def controller(self, current_obs_pose, current_goal_pose):
         # Instructions: You can implement your own control algorithm here
         # feel free to modify the code structure, add more parameters, more input variables for the function, etc.
         
@@ -190,6 +198,18 @@ class TrackingNode(Node):
         cmd_vel.linear.x = 0
         cmd_vel.linear.y = 0
         cmd_vel.angular.z = 0
+        k_p = 0.5
+
+
+
+        if self.goal_pose is not None:
+            error_x = current_goal_pose[0] - self.x
+            error_y = current_goal_pose[1] - self.y
+            cmd_vel.linear.x = error_x * k_p
+            cmd_vel.linar.y = error_y * k_p
+            self.x += error_x * k_p * self.dt
+            self.y += error_y * k_p * self.dt
+
         return cmd_vel
     
         ############################################
