@@ -203,12 +203,15 @@ class TrackingNode(Node):
 
 
         if self.goal_pose is not None:
+            self.get_logger().info("Goal pose is not none. Attempting something")
             error_x = current_goal_pose[0] - self.x
             error_y = current_goal_pose[1] - self.y
             cmd_vel.linear.x = error_x * k_p
             cmd_vel.linar.y = error_y * k_p
             self.x += error_x * k_p * self.dt
             self.y += error_y * k_p * self.dt
+        else:
+            self.get_logger().info("No goal pose :(")
 
         return cmd_vel
     
