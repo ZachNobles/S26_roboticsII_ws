@@ -210,6 +210,7 @@ class TrackingNode(Node):
 
         kp_linear = 0.5 
         kp_angular = 1.0
+        kp_obstacle = 0.5
 
 
 
@@ -218,7 +219,11 @@ class TrackingNode(Node):
             goal_x = current_goal_pose[0]
             goal_y = current_goal_pose[1]
 
+            obs_x = current_obs_pose[0]
+            obs_y = current_obs_pose[1]
+
             distance_to_goal = math.sqrt(goal_x**2 + goal_y**2)
+            distance_to_obstacle = math.sqrt(obs_x**2 + obs_y**2)
             angle_to_goal = math.atan2(goal_y, goal_x)
 
             if distance_to_goal < 0.1:
@@ -227,6 +232,8 @@ class TrackingNode(Node):
             else:
                 cmd_vel.linear.x = kp_linear * distance_to_goal
                 cmd_vel.angular.z = kp_angular * angle_to_goal
+                if distance_to_obstacle < 0.5:
+                    cmd_vel.linear.y = kp_obstacle * (0.5 - distance_to_obstacle)
 
                 cmd_vel.linear.x = min(cmd_vel.linear.x, 0.2) # max 0.2 m/s
                 cmd_vel.angular.z = min(max(cmd_vel.angular.z, -1.0), 1.0) # max 1.0 rad/s
