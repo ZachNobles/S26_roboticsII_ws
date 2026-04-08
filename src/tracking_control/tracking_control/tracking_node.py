@@ -145,6 +145,10 @@ class TrackingNode(Node):
         
     def get_current_poses(self):
         
+        if self.obs_pose is None or self.goal_pose is None:
+            self.get_logger().warn('Cannot compute current poses: obs_pose or goal_pose is missing')
+            return None, None
+
         odom_id = self.get_parameter('world_frame_id').get_parameter_value().string_value
         # Get the current robot pose
         try:
@@ -154,13 +158,12 @@ class TrackingNode(Node):
             robot_world_y = transform.transform.translation.y
             robot_world_z = transform.transform.translation.z
             robot_world_R = q2R([transform.transform.rotation.w, transform.transform.rotation.x, transform.transform.rotation.y, transform.transform.rotation.z])
-            obstacle_pose = robot_world_R@self.obs_pose+np.array([robot_world_x,robot_world_y,robot_world_z])
-            goal_pose = robot_world_R@self.goal_pose+np.array([robot_world_x,robot_world_y,robot_world_z])
-    
-        
+            obstacle_pose = robot_world_R @ self.obs_pose + np.array([robot_world_x,robot_world_y,robot_world_z])
+            goal_pose = robot_world_R @ self.goal_pose + np.array([robot_world_x,robot_world_y,robot_world_z])
+
         except TransformException as e:
             self.get_logger().error('Transform error: ' + str(e))
-            return
+            return None, None
         
         return obstacle_pose, goal_pose
     
@@ -170,7 +173,7 @@ class TrackingNode(Node):
         # Now, the robot stops if the object is not detected
         # But, you may want to think about what to do in this case
         # and update the command velocity accordingly
-        if self.goal_pose is None:
+        if self.goal_pose is None or self.obs_pose is None:
             cmd_vel = Twist()
             cmd_vel.linear.x = 0.0
             cmd_vel.angular.z = 0.0
@@ -179,6 +182,12 @@ class TrackingNode(Node):
         
         # Get the current object pose in the robot base_footprint frame
         current_obs_pose, current_goal_pose = self.get_current_poses()
+        if current_obs_pose is None or current_goal_pose is None:
+            cmd_vel = Twist()
+            cmd_vel.linear.x = 0.0
+            cmd_vel.angular.z = 0.0
+            self.pub_control_cmd.publish(cmd_vel)
+            return
         
         # TODO: get the control velocity command
         cmd_vel = self.controller(current_obs_pose, current_goal_pose)
