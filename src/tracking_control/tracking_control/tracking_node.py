@@ -221,14 +221,14 @@ class TrackingNode(Node):
             self.goal_reached = False
 
         if current_goal_pose is not None:
-            self.get_logger().info("Goal pose is not none. Attempting something")
             goal_x = current_goal_pose[0]
             goal_y = current_goal_pose[1]
+            self.get_logger().info(f"Goal detected at {goal_x}, {goal_y}")
 
             if current_obs_pose is not None:
                 obs_x = current_obs_pose[0]
                 obs_y = current_obs_pose[1]
-                self.get_logger().info("Obstacle detected")
+                self.get_logger().info(f"Obstacle detected at {obs_x}, {obs_y}")
 
             distance_to_goal = math.sqrt(goal_x**2 + goal_y**2)
             distance_to_obstacle = math.sqrt(obs_x**2 + obs_y**2)
