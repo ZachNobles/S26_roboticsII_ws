@@ -204,9 +204,9 @@ class TrackingNode(Node):
         
         # TODO: Update the control velocity command
         cmd_vel = Twist()
-        cmd_vel.linear.x = 0
-        cmd_vel.linear.y = 0
-        cmd_vel.angular.z = 0
+        cmd_vel.linear.x = 0.0
+        cmd_vel.linear.y = 0.0
+        cmd_vel.angular.z = 0.0
 
         kp_linear = 0.5 
         kp_angular = 1.0
