@@ -85,10 +85,13 @@ class TrackingNode(Node):
         # Create timer, running at 100Hz
         self.timer = self.create_timer(0.01, self.timer_update)
 
-        self.x = 0
-        self.y = 0
-        self.z = 0
-        self.dt = 0.01
+        self.x = 0.0
+        self.y = 0.0
+        self.final_x = 0.0
+        self.final_y = 0.0
+
+        self.goal_reached = False
+        self.returning = False
     
     def detected_obs_pose_callback(self, msg):
         #self.get_logger().info('Received Detected Object Pose')
@@ -212,7 +215,10 @@ class TrackingNode(Node):
         kp_angular = 1.0
         kp_obstacle = 0.5
 
-
+        if self.goal_reached:
+            self.get_logger().info("Returning to start")
+            current_goal_pose = [0 - self.final_x, 0 - self.final_y]
+            self.goal_reached = False
 
         if current_goal_pose is not None:
             self.get_logger().info("Goal pose is not none. Attempting something")
@@ -228,18 +234,27 @@ class TrackingNode(Node):
             distance_to_obstacle = math.sqrt(obs_x**2 + obs_y**2)
             angle_to_goal = math.atan2(goal_y, goal_x)
 
-            if distance_to_goal < 0.1:
+            if distance_to_goal < 0.3:
                 cmd_vel.linear.x = 0.0
                 cmd_vel.angular.z = 0.0
+                self.get_logger().info("Goal reached")
+                self.goal_reached = True
+                self.returning = True
+                self.final_x = self.x
+                self.final_y = self.y
+
             else:
                 cmd_vel.linear.x = kp_linear * distance_to_goal
                 cmd_vel.angular.z = kp_angular * angle_to_goal
-                if current_obs_pose is not None and distance_to_obstacle < 0.5:
-                    cmd_vel.linear.y = kp_obstacle * (0.5 - distance_to_obstacle)
+                if current_obs_pose is not None and distance_to_obstacle < 0.8:
+                    cmd_vel.linear.y = kp_obstacle * (0.8 - distance_to_obstacle)
 
                 cmd_vel.linear.x = min(cmd_vel.linear.x, 0.2) # max 0.2 m/s
                 cmd_vel.angular.z = min(max(cmd_vel.angular.z, -1.0), 1.0) # max 1.0 rad/s
 
+                self.x += cmd_vel.linear.x * 0.01
+                self.y += cmd_vel.linear.y * 0.01
+                
 
 
         else:
