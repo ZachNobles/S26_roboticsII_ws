@@ -214,13 +214,15 @@ class TrackingNode(Node):
 
 
 
-        if self.goal_pose is not None:
+        if current_goal_pose is not None:
             self.get_logger().info("Goal pose is not none. Attempting something")
             goal_x = current_goal_pose[0]
             goal_y = current_goal_pose[1]
 
-            obs_x = current_obs_pose[0]
-            obs_y = current_obs_pose[1]
+            if current_obs_pose is not None:
+                obs_x = current_obs_pose[0]
+                obs_y = current_obs_pose[1]
+                self.get_logger().info("Obstacle detected")
 
             distance_to_goal = math.sqrt(goal_x**2 + goal_y**2)
             distance_to_obstacle = math.sqrt(obs_x**2 + obs_y**2)
@@ -232,7 +234,7 @@ class TrackingNode(Node):
             else:
                 cmd_vel.linear.x = kp_linear * distance_to_goal
                 cmd_vel.angular.z = kp_angular * angle_to_goal
-                if distance_to_obstacle < 0.5:
+                if current_obs_pose is not None and distance_to_obstacle < 0.5:
                     cmd_vel.linear.y = kp_obstacle * (0.5 - distance_to_obstacle)
 
                 cmd_vel.linear.x = min(cmd_vel.linear.x, 0.2) # max 0.2 m/s
