@@ -181,7 +181,7 @@ class TrackingNode(Node):
         current_obs_pose, current_goal_pose = self.get_current_poses()
         
         # TODO: get the control velocity command
-        cmd_vel = self.controller()
+        cmd_vel = self.controller(current_obs_pose, current_goal_pose)
         
         # publish the control command
         self.pub_control_cmd.publish(cmd_vel)
