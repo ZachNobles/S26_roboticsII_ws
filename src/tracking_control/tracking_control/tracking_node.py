@@ -85,13 +85,10 @@ class TrackingNode(Node):
         # Create timer, running at 100Hz
         self.timer = self.create_timer(0.01, self.timer_update)
 
-        self.x = 0.0
-        self.y = 0.0
-        self.final_x = 0.0
-        self.final_y = 0.0
-
-        self.goal_reached = False
-        self.returning = False
+        self.start_pose = None
+        self.state = 'go_to_goal'  # states: go_to_goal, return_home, done
+        self.goal_reached_count = 0
+        self.goal_stable_cycles = 5
     
     def detected_obs_pose_callback(self, msg):
         #self.get_logger().info('Received Detected Object Pose')
@@ -147,118 +144,147 @@ class TrackingNode(Node):
         self.goal_pose = cp_world
         
     def get_current_poses(self):
-        
-        if self.obs_pose is None or self.goal_pose is None:
-            self.get_logger().warn('Cannot compute current poses: obs_pose or goal_pose is missing')
-            return None, None
-
         odom_id = self.get_parameter('world_frame_id').get_parameter_value().string_value
-        # Get the current robot pose
         try:
-            # from base_footprint to odom
             transform = self.tf_buffer.lookup_transform('base_footprint', odom_id, rclpy.time.Time())
             robot_world_x = transform.transform.translation.x
             robot_world_y = transform.transform.translation.y
             robot_world_z = transform.transform.translation.z
-            robot_world_R = q2R([transform.transform.rotation.w, transform.transform.rotation.x, transform.transform.rotation.y, transform.transform.rotation.z])
-            obstacle_pose = robot_world_R @ self.obs_pose + np.array([robot_world_x,robot_world_y,robot_world_z])
-            goal_pose = robot_world_R @ self.goal_pose + np.array([robot_world_x,robot_world_y,robot_world_z])
-
+            robot_world_R = q2R([transform.transform.rotation.w,
+                                transform.transform.rotation.x,
+                                transform.transform.rotation.y,
+                                transform.transform.rotation.z])
         except TransformException as e:
             self.get_logger().error('Transform error: ' + str(e))
             return None, None
-        
+
+        obstacle_pose = None
+        goal_pose = None
+
+        if self.obs_pose is not None:
+            obstacle_pose = robot_world_R @ self.obs_pose + np.array([robot_world_x, robot_world_y, robot_world_z])
+        if self.goal_pose is not None:
+            goal_pose = robot_world_R @ self.goal_pose + np.array([robot_world_x, robot_world_y, robot_world_z])
+
         return obstacle_pose, goal_pose
-    
+
+    def get_robot_pose(self):
+        odom_id = self.get_parameter('world_frame_id').get_parameter_value().string_value
+        try:
+            transform = self.tf_buffer.lookup_transform(odom_id, 'base_footprint', rclpy.time.Time())
+        except TransformException as e:
+            self.get_logger().error('Robot pose transform error: ' + str(e))
+            return None, None
+
+        robot_world_x = transform.transform.translation.x
+        robot_world_y = transform.transform.translation.y
+        q = np.array([transform.transform.rotation.w,
+                      transform.transform.rotation.x,
+                      transform.transform.rotation.y,
+                      transform.transform.rotation.z])
+        _, _, yaw = euler_from_quaternion(q)
+        return np.array([robot_world_x, robot_world_y]), yaw
+
+    def get_return_pose(self):
+        if self.start_pose is None:
+            return None
+
+        robot_pose, yaw = self.get_robot_pose()
+        if robot_pose is None or yaw is None:
+            return None
+
+        delta = self.start_pose - robot_pose
+        c = math.cos(yaw)
+        s = math.sin(yaw)
+        return np.array([c * delta[0] + s * delta[1],
+                         -s * delta[0] + c * delta[1],
+                         0.0])
+
     def timer_update(self):
-        ################### Write your code here ###################
-        
-        # Now, the robot stops if the object is not detected
-        # But, you may want to think about what to do in this case
-        # and update the command velocity accordingly
-        if self.goal_pose is None or self.obs_pose is None:
+        if self.start_pose is None:
+            robot_pose, _ = self.get_robot_pose()
+            if robot_pose is not None:
+                self.start_pose = robot_pose
+                self.get_logger().info(f'Captured start pose: {self.start_pose.tolist()}')
+
+        current_obs_pose, detected_goal_pose = self.get_current_poses()
+
+        if self.state == 'go_to_goal':
+            if detected_goal_pose is None:
+                cmd_vel = Twist()
+                cmd_vel.linear.x = 0.0
+                cmd_vel.angular.z = 0.0
+                self.pub_control_cmd.publish(cmd_vel)
+                return
+            current_goal_pose = detected_goal_pose
+        elif self.state == 'return_home':
+            current_goal_pose = self.get_return_pose()
+            if current_goal_pose is None:
+                cmd_vel = Twist()
+                cmd_vel.linear.x = 0.0
+                cmd_vel.angular.z = 0.0
+                self.pub_control_cmd.publish(cmd_vel)
+                return
+        else:
             cmd_vel = Twist()
             cmd_vel.linear.x = 0.0
             cmd_vel.angular.z = 0.0
             self.pub_control_cmd.publish(cmd_vel)
             return
-        
-        # Get the current object pose in the robot base_footprint frame
-        current_obs_pose, current_goal_pose = self.get_current_poses()
-        if current_obs_pose is None or current_goal_pose is None:
-            cmd_vel = Twist()
-            cmd_vel.linear.x = 0.0
-            cmd_vel.angular.z = 0.0
-            self.pub_control_cmd.publish(cmd_vel)
-            return
-        
-        # TODO: get the control velocity command
+
         cmd_vel = self.controller(current_obs_pose, current_goal_pose)
-        
-        # publish the control command
         self.pub_control_cmd.publish(cmd_vel)
         #################################################
     
     def controller(self, current_obs_pose, current_goal_pose):
-        # Instructions: You can implement your own control algorithm here
-        # feel free to modify the code structure, add more parameters, more input variables for the function, etc.
-        
-        ########### Write your code here ###########
-        
-        # TODO: Update the control velocity command
         cmd_vel = Twist()
         cmd_vel.linear.x = 0.0
-        cmd_vel.linear.y = 0.0
         cmd_vel.angular.z = 0.0
 
-        kp_linear = 0.5 
-        kp_angular = 1.0
-        kp_obstacle = 0.5
+        kp_linear = 0.6
+        kp_angular = 1.2
+        max_linear = 0.25
+        max_angular = 1.0
+        goal_threshold = 0.18
+        return_threshold = 0.20
+        avoid_zone = 0.8
+        avoid_gain = 1.0
 
-        if self.goal_reached:
-            self.get_logger().info("Returning to start")
-            current_goal_pose = [0 - self.final_x, 0 - self.final_y]
-            self.goal_reached = False
+        goal_x = current_goal_pose[0]
+        goal_y = current_goal_pose[1]
+        distance_to_goal = math.hypot(goal_x, goal_y)
+        angle_to_goal = math.atan2(goal_y, goal_x)
 
-        if current_goal_pose is not None:
-            goal_x = current_goal_pose[0]
-            goal_y = current_goal_pose[1]
-            self.get_logger().info(f"Goal detected at {goal_x}, {goal_y}")
+        threshold = goal_threshold if self.state == 'go_to_goal' else return_threshold
 
-            if current_obs_pose is not None:
-                obs_x = current_obs_pose[0]
-                obs_y = current_obs_pose[1]
-                self.get_logger().info(f"Obstacle detected at {obs_x}, {obs_y}")
+        if distance_to_goal < threshold:
+            self.goal_reached_count += 1
+            if self.goal_reached_count >= self.goal_stable_cycles:
+                if self.state == 'go_to_goal':
+                    self.state = 'return_home'
+                    self.get_logger().info('Goal reached, switching to return_home')
+                elif self.state == 'return_home':
+                    self.state = 'done'
+                    self.get_logger().info('Returned to start, stopping')
+                self.goal_reached_count = 0
+            return cmd_vel
 
-            distance_to_goal = math.sqrt(goal_x**2 + goal_y**2)
-            distance_to_obstacle = math.sqrt(obs_x**2 + obs_y**2)
-            angle_to_goal = math.atan2(goal_y, goal_x)
+        self.goal_reached_count = 0
+        cmd_vel.linear.x = kp_linear * distance_to_goal
+        cmd_vel.angular.z = kp_angular * angle_to_goal
 
-            if distance_to_goal < 0.3:
-                cmd_vel.linear.x = 0.0
-                cmd_vel.angular.z = 0.0
-                self.get_logger().info("Goal reached")
-                self.goal_reached = True
-                self.returning = True
-                self.final_x = self.x
-                self.final_y = self.y
+        if current_obs_pose is not None:
+            obs_x = current_obs_pose[0]
+            obs_y = current_obs_pose[1]
+            obs_dist = math.hypot(obs_x, obs_y)
 
-            else:
-                cmd_vel.linear.x = kp_linear * distance_to_goal
-                cmd_vel.angular.z = kp_angular * angle_to_goal
-                if current_obs_pose is not None and distance_to_obstacle < 0.8:
-                    cmd_vel.linear.y = kp_obstacle * (0.8 - distance_to_obstacle)
+            if obs_dist < avoid_zone and obs_x > 0.0:
+                turn_direction = -1.0 if obs_y > 0.0 else 1.0
+                cmd_vel.angular.z += turn_direction * avoid_gain * (avoid_zone - obs_dist)
+                cmd_vel.linear.x *= 0.5
 
-                cmd_vel.linear.x = min(cmd_vel.linear.x, 0.2) # max 0.2 m/s
-                cmd_vel.angular.z = min(max(cmd_vel.angular.z, -1.0), 1.0) # max 1.0 rad/s
-
-                self.x += cmd_vel.linear.x * 0.01
-                self.y += cmd_vel.linear.y * 0.01
-                
-
-
-        else:
-            self.get_logger().info("No goal pose :(")
+        cmd_vel.linear.x = min(max(cmd_vel.linear.x, 0.0), max_linear)
+        cmd_vel.angular.z = min(max(cmd_vel.angular.z, -max_angular), max_angular)
 
         return cmd_vel
     
