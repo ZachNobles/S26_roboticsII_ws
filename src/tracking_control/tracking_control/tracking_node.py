@@ -198,18 +198,32 @@ class TrackingNode(Node):
         cmd_vel.linear.x = 0
         cmd_vel.linear.y = 0
         cmd_vel.angular.z = 0
-        k_p = 0.5
+
+        kp_linear = 0.5 
+        kp_angular = 1.0
 
 
 
         if self.goal_pose is not None:
             self.get_logger().info("Goal pose is not none. Attempting something")
-            error_x = current_goal_pose[0] - self.x
-            error_y = current_goal_pose[1] - self.y
-            cmd_vel.linear.x = error_x * k_p
-            cmd_vel.linar.y = error_y * k_p
-            self.x += error_x * k_p * self.dt
-            self.y += error_y * k_p * self.dt
+            goal_x = current_goal_pose[0]
+            goal_y = current_goal_pose[1]
+
+            distance_to_goal = math.sqrt(goal_x**2 + goal_y**2)
+            angle_to_goal = math.atan2(goal_y, goal_x)
+
+            if distance_to_goal < 0.1:
+                cmd_vel.linear.x = 0.0
+                cmd_vel.angular.z = 0.0
+            else:
+                cmd_vel.linear.x = kp_linear * distance_to_goal
+                cmd_vel.angular.z = kp_angular * angle_to_goal
+
+                cmd_vel.linear.x = min(cmd_vel.linear.x, 0.2) # max 0.2 m/s
+                cmd_vel.angular.z = min(max(cmd_vel.angular.z, -1.0), 1.0) # max 1.0 rad/s
+
+
+
         else:
             self.get_logger().info("No goal pose :(")
 
